@@ -1,4 +1,6 @@
 from datetime import datetime
+import re
+from html import unescape
 
 
 class DiscoveryEngine:
@@ -23,36 +25,44 @@ class DiscoveryEngine:
 
     def normalize_topics(self, topics):
         """
-        Normalize topic structure.
+        Normalize topic structure and clean incoming text/URLs.
         """
 
         normalized = []
 
         for topic in topics:
 
+            title = self.clean_text(
+                topic.get("title", "")
+            )
+
+            source = self.clean_text(
+                topic.get("source", "Unknown")
+            )
+
+            url = self.clean_url(
+                topic.get("url", "")
+            )
+
+            summary = self.clean_text(
+                topic.get("summary", "")
+            )
+
+            category = self.clean_text(
+                topic.get("category", "AI")
+            )
+
             normalized.append({
 
-                "title": topic.get("title", "").strip(),
+                "title": title,
 
-                "source": topic.get(
-                    "source",
-                    "Unknown"
-                ),
+                "source": source or "Unknown",
 
-                "url": topic.get(
-                    "url",
-                    ""
-                ),
+                "url": url,
 
-                "summary": topic.get(
-                    "summary",
-                    ""
-                ),
+                "summary": summary,
 
-                "category": topic.get(
-                    "category",
-                    "AI"
-                ),
+                "category": category or "AI",
 
                 "discovered_at": datetime.utcnow().isoformat(),
 
@@ -66,22 +76,39 @@ class DiscoveryEngine:
 
     def remove_duplicates(self, topics):
         """
-        Remove duplicate topics using title.
+        Remove duplicate topics using normalized title and URL.
         """
 
-        seen = set()
+        seen_titles = set()
+        seen_urls = set()
 
         unique_topics = []
 
         for topic in topics:
 
-            title = topic["title"].lower()
+            title = self.normalize_key(
+                topic.get("title", "")
+            )
 
-            if title not in seen:
+            url = self.normalize_key(
+                topic.get("url", "")
+            )
 
-                seen.add(title)
+            # Prefer URL as the strongest duplicate key.
+            if url and url in seen_urls:
+                continue
 
-                unique_topics.append(topic)
+            # Also prevent duplicate titles.
+            if title and title in seen_titles:
+                continue
+
+            if title:
+                seen_titles.add(title)
+
+            if url:
+                seen_urls.add(url)
+
+            unique_topics.append(topic)
 
         return unique_topics
 
@@ -111,9 +138,9 @@ class DiscoveryEngine:
 
         score = 0
 
-        title = topic["title"].lower()
-        summary = topic["summary"].lower()
-        category = topic["category"].lower()
+        title = topic.get("title", "").lower()
+        summary = topic.get("summary", "").lower()
+        category = topic.get("category", "").lower()
 
         # AI relevance
         if "ai" in title:
@@ -151,10 +178,102 @@ class DiscoveryEngine:
                 score += 3
 
         # Source and URL availability
-        if topic["source"] != "Unknown":
+        if topic.get("source") and topic["source"] != "Unknown":
             score += 5
 
-        if topic["url"]:
+        if topic.get("url"):
             score += 5
 
         return min(score, 100)
+
+    def clean_text(self, value):
+        """
+        Remove HTML markup and escaped HTML from incoming text.
+        """
+
+        if not value:
+            return ""
+
+        value = str(value)
+
+        # Decode HTML entities such as &amp; and &#x27;
+        value = unescape(value)
+
+        # Remove HTML tags.
+        value = re.sub(
+            r"<[^>]+>",
+            " ",
+            value
+        )
+
+        # Remove markdown-style links:
+        # [text](url)
+        # Remove markdown links completely.
+        value = re.sub( r"\[([^\]]+)\]\([^)]+\)", "", value)
+
+        # Remove excessive whitespace.
+        value = re.sub(
+            r"\s+",
+            " ",
+            value
+        )
+
+        return value.strip()
+
+    def clean_url(self, value):
+        """
+        Return a clean URL without HTML or markdown wrappers.
+        """
+
+        if not value:
+            return ""
+
+        value = unescape(str(value)).strip()
+
+        # Handle markdown URL:
+        # [https://example.com](https://example.com)
+        markdown_match = re.search(
+            r"\]\((https?://[^)]+)\)",
+            value
+        )
+
+        if markdown_match:
+            return markdown_match.group(1).strip()
+
+        # Handle HTML href:
+        # <a href="https://example.com">
+        href_match = re.search(
+            r'href=["\'](https?://[^"\']+)["\']',
+            value
+        )
+
+        if href_match:
+            return href_match.group(1).strip()
+
+        # Extract plain URL if additional text exists.
+        url_match = re.search(
+            r"https?://[^\s<>\"']+",
+            value
+        )
+
+        if url_match:
+            return url_match.group(0).strip()
+
+        return value
+
+    def normalize_key(self, value):
+        """
+        Create a stable key for duplicate detection.
+        """
+
+        value = self.clean_text(value)
+
+        value = value.lower()
+
+        value = re.sub(
+            r"\s+",
+            " ",
+            value
+        )
+
+        return value.strip()

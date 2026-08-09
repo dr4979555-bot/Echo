@@ -30,7 +30,7 @@ class BreethService:
             url,
             headers=self.headers,
             json=payload,
-            timeout=15
+            timeout=3
         )
 
         print("BREETH SAVE STATUS:", response.status_code)
@@ -91,7 +91,7 @@ AI and technology focused persona.
             url,
             headers=self.headers,
             json=payload,
-            timeout=15
+            timeout=3
         )
 
         print("BREETH SEARCH STATUS:", response.status_code)

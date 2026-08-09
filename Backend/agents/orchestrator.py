@@ -6,11 +6,7 @@ from agents.publishing_engine import PublishingEngine
 
 class Orchestrator:
 
-    def __init__(
-        self,
-        news_service,
-        db
-    ):
+    def __init__(self, news_service, db):
 
         self.discovery = DiscoveryEngine(
             news_service
@@ -26,39 +22,70 @@ class Orchestrator:
             db
         )
 
-    def run(self, agent_id):
-        """
-        Run the complete Echo Mind autonomous workflow.
-        """
+    def run(self, objective, agent_id):
+
+        print("\n==============================")
+        print("ECHO MIND ORCHESTRATOR START")
+        print("==============================")
+
+        print(f"AGENT ID: {agent_id}")
+        print(f"OBJECTIVE: {objective}")
+
+        # --------------------------------
+        # DISCOVERY
+        # --------------------------------
+
+        print("\n[1] DISCOVERY START")
 
         topics = self.discovery.discover_topics()
 
+        print(
+            f"[1] DISCOVERY COMPLETE - {len(topics)} topics found"
+        )
+
         results = []
 
-        # Prevent duplicate topics
-        # during the same run.
         processed_titles = set()
 
-        for topic in topics:
+        # --------------------------------
+        # PROCESS TOPICS
+        # --------------------------------
 
-            # --------------------------------
-            # Normalize Title
-            # --------------------------------
+        for index, topic in enumerate(topics, start=1):
+
+            print(
+                f"\n---------- TOPIC {index} ----------"
+            )
+
+            title = topic.get(
+                "title",
+                ""
+            )
+
+            print(
+                f"TITLE: {title}"
+            )
 
             normalized_title = (
-                topic.get("title", "")
+                title
                 .strip()
                 .lower()
             )
 
             # --------------------------------
-            # Current Run Duplicate Check
+            # DUPLICATE CHECK
             # --------------------------------
+
+            print("[2] CHECKING DUPLICATE")
 
             if normalized_title in processed_titles:
 
+                print(
+                    "[2] DUPLICATE - SKIPPING"
+                )
+
                 results.append({
-                    "title": topic.get("title", ""),
+                    "title": title,
                     "status": "skipped",
                     "reason": (
                         "Duplicate topic in current run."
@@ -72,18 +99,28 @@ class Orchestrator:
             )
 
             # --------------------------------
-            # Local Memory Check
+            # MEMORY CHECK
             # --------------------------------
+
+            print("[3] MEMORY CHECK START")
 
             memory = self.memory.topic_exists(
                 agent_id,
-                topic["title"]
+                title
+            )
+
+            print(
+                f"[3] MEMORY CHECK COMPLETE: {memory}"
             )
 
             if memory:
 
+                print(
+                    "[3] ALREADY EXISTS - SKIPPING"
+                )
+
                 results.append({
-                    "title": topic["title"],
+                    "title": title,
                     "status": "skipped",
                     "reason": (
                         "Already exists in memory."
@@ -93,31 +130,56 @@ class Orchestrator:
                 continue
 
             # --------------------------------
-            # Retrieve Breeth Context
+            # MEMORY CONTEXT
             # --------------------------------
 
+            print("[4] MEMORY CONTEXT START")
+
             context = self.memory.get_context(
-                topic["title"]
+                title
+            )
+
+            print(
+                "[4] MEMORY CONTEXT COMPLETE"
             )
 
             if context:
-
                 topic["memory_context"] = context
 
             # --------------------------------
-            # Editorial Decision
+            # ADD AGENT ID
             # --------------------------------
+
+            topic["agent_id"] = agent_id
+
+            # --------------------------------
+            # EDITORIAL
+            # --------------------------------
+
+            print("[5] EDITORIAL START")
 
             editorial_result = (
                 self.editorial.evaluate(topic)
             )
 
+            print(
+                "[5] EDITORIAL COMPLETE:",
+                editorial_result
+            )
+
+            # --------------------------------
+            # REJECTED
+            # --------------------------------
+
             if not editorial_result["approved"]:
 
-                # Store rejected decision
+                print(
+                    "[6] TOPIC REJECTED"
+                )
+
                 self.memory.remember_topic(
                     agent_id=agent_id,
-                    title=topic["title"],
+                    title=title,
                     decision="reject",
                     score=editorial_result["score"],
                     summary=topic.get(
@@ -135,7 +197,7 @@ class Orchestrator:
                 )
 
                 results.append({
-                    "title": topic["title"],
+                    "title": title,
                     "status": "rejected",
                     "reason": editorial_result["reason"],
                     "score": editorial_result["score"]
@@ -144,12 +206,16 @@ class Orchestrator:
                 continue
 
             # --------------------------------
-            # Store Published Memory
+            # SAVE MEMORY
             # --------------------------------
+
+            print(
+                "[6] SAVING TOPIC TO MEMORY"
+            )
 
             self.memory.remember_topic(
                 agent_id=agent_id,
-                title=topic["title"],
+                title=title,
                 decision="publish",
                 score=editorial_result["score"],
                 summary=topic.get(
@@ -166,34 +232,44 @@ class Orchestrator:
                 )
             )
 
-            # --------------------------------
-            # Add Agent ID
-            # --------------------------------
-
-            topic["agent_id"] = agent_id
+            print(
+                "[6] MEMORY SAVE COMPLETE"
+            )
 
             # --------------------------------
-            # Publish
+            # PUBLISH
             # --------------------------------
 
-            post = self.publisher.publish(
-                topic,
-                editorial_result["reason"]
+            print(
+                "[7] PUBLISH START"
+            )
+
+            topic["take"] = editorial_result.get("take","")
+            post = self.publisher.publish(topic,editorial_result["reason"])
+
+            print(
+                f"[7] PUBLISH COMPLETE - POST ID: {post.id}"
             )
 
             results.append({
-                "title": topic["title"],
+                "title": title,
                 "status": "published",
                 "post_id": str(post.id),
                 "score": editorial_result["score"]
             })
 
         # --------------------------------
-        # Final Response
+        # COMPLETE
         # --------------------------------
 
+        print("\n==============================")
+        print("ECHO MIND ORCHESTRATOR COMPLETE")
+        print("==============================")
+
         return {
+            "success": True,
             "agent_id": agent_id,
+            "objective": objective,
             "discovered": len(topics),
             "results": results
         }

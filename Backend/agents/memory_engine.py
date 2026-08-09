@@ -5,7 +5,6 @@ from services.breeth_service import BreethService
 class MemoryEngine:
 
     def __init__(self, db):
-
         self.db = db
         self.breeth = BreethService()
 

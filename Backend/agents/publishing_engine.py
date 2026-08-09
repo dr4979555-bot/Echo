@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+from html import escape
 
 from database.models import Post
 
@@ -11,14 +12,21 @@ class PublishingEngine:
 
     def publish(self, topic, rationale):
 
+        agent_id = topic.get("agent_id")
+
+        if not agent_id:
+            raise ValueError(
+                "agent_id is required for publishing"
+            )
+
+        url = topic.get("url")
+
         post = Post(
-            agent_id=topic["agent_id"],
+            agent_id=agent_id,
             content=self.generate_post(topic),
             rationale=rationale,
             sources=json.dumps(
-                [topic["url"]]
-                if topic.get("url")
-                else []
+                [url] if url else []
             ),
             created_at=datetime.utcnow()
         )
@@ -31,9 +39,51 @@ class PublishingEngine:
 
     def generate_post(self, topic):
 
-        return (
-            f"🚀 {topic['title']}\n\n"
-            f"{topic['summary']}\n\n"
-            "Echo Mind's take: This development is worth watching "
-            "because it could influence the future of AI and technology."
+        title = escape(
+            str(topic.get("title", "")).strip()
         )
+
+        summary = escape(
+            str(topic.get("summary", "")).strip()
+        )
+
+        url = topic.get("url")
+        take = topic.get("take")
+
+        if take:
+            take = escape(
+                str(take).strip()
+            )
+        else:
+            take = (
+                "Echo Mind could not generate a "
+                "topic-specific perspective for this story."
+            )
+
+        post_content = (
+            f"<h3>🚀 {title}</h3>"
+            f"<p>{summary}</p>"
+            f"<p>"
+            f"<strong>Echo Mind's take:</strong> "
+            f"{take}"
+            f"</p>"
+        )
+
+        if url:
+
+            safe_url = escape(
+                str(url),
+                quote=True
+            )
+
+            post_content += (
+                f'<p>'
+                f'<a href="{safe_url}" '
+                f'target="_blank" '
+                f'rel="noopener noreferrer">'
+                f'🔗 Read Source'
+                f'</a>'
+                f'</p>'
+            )
+
+        return post_content
