@@ -1,4 +1,3 @@
-Here is the complete Hinglish-to-English translation of all text lines across all 10 chats, maintaining the original chat structure:
 
 ### CHAT 1:
 
